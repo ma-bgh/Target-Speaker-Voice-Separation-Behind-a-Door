@@ -5,22 +5,6 @@ Extracting one known speaker's voice from a noisy "party" mixture when the recor
 The repository contains a runnable single-channel demo (`voice_separation_Party.py`) and the design of a complete multi-microphone pipeline (AR/LPC speaker fingerprint → harmonic tracking → speaker verification → TDOA localization → MVDR beamforming). It was developed as a coursework project for *Speech and Speaker Recognition*.
 
 ---
-
-## Table of Contents
-
-1. [Problem Statement](#problem-statement)
-2. [Method Overview](#method-overview)
-3. [What the Demo Implements](#what-the-demo-implements)
-4. [Installation](#installation)
-5. [Usage](#usage)
-6. [Simulated Scenario](#simulated-scenario)
-7. [Outputs](#outputs)
-8. [Project Status and Roadmap](#project-status-and-roadmap)
-9. [Repository Structure](#repository-structure)
-10. [References](#references)
-
----
-
 ## Problem Statement
 
 A person stands behind a door and wants to hear **one specific speaker** inside a room full of party noise and other voices. The door acts as a low-pass filter, so the target voice arrives muffled and mixed with interfering speakers and background noise.
@@ -35,16 +19,6 @@ The following five acquisition scenarios are considered in the project:
 | 4 | Moving | One moving microphone |
 | 5 | Moving | Two moving microphones inside the room |
 
-The observed signal at microphone *m* in the STFT domain is modeled as:
-
-$$
-X_m(\tau, f) \approx \sum_{i=1}^{I} H_{m,i}(f)\, S_i(\tau, f) + V_m(\tau, f)
-$$
-
-where $S_i$ are the speaker sources, $H_{m,i}$ the acoustic paths from source *i* to microphone *m*, and $V_m$ the noise. The goal is to recover $S_1$, the clean voice of the target speaker.
-
----
-
 ## Method Overview
 
 The approach has three stages:
@@ -53,67 +27,7 @@ The approach has three stages:
 2. **Find where the target speaks** in the mixture.
 3. **Separate** the voice using spatial information and filtering.
 
-### 1. Speaker fingerprint with an AR model
 
-Speech is modeled as the output of an all-pole (autoregressive) filter driven by white noise. The poles of this filter correspond to the **formants**.
-
-$$
-s[n] = -\sum_{k=1}^{p} a_k\, s[n-k] + e[n], \qquad
-P(\omega) = \frac{\sigma^2}{\left|1 + \sum_{k=1}^{p} a_k e^{-j\omega k}\right|^2}
-$$
-
-- Coefficients are estimated with the **Yule–Walker equations**, solved efficiently with the **Levinson–Durbin** recursion:
-
-  $$
-  \mathbf{a} = -\mathbf{R}^{-1}\mathbf{r}, \qquad \sigma^2 = r_{xx}(0) + \sum_{k=1}^{p} a_k r_{xx}(k)
-  $$
-
-- Analysis is done on **25 ms frames**, since speech is only quasi-stationary over very short intervals.
-- The model order *p* is selected with **AIC** and **BIC**:
-
-  $$
-  \mathrm{AIC}_p = N\ln\sigma_p^2 + 2p, \qquad \mathrm{BIC}_p = N\ln\sigma_p^2 + p\ln N
-  $$
-
-  For 8 kHz speech *p* is typically about 10. The procedure was validated on the AR(3) example from the reference article using 1000 samples; both criteria were minimized at *p* = 3, matching the published result.
-
-Two quantities are stored from a few seconds of reference speech:
-
-- **LPC vector (`a_S`)** – the spectral envelope, i.e. the speaker's timbre.
-- **Fundamental frequency (`f0`)** – the pitch, estimated via autocorrelation:
-
-  $$
-  f_0 = \frac{f_s}{\tau^*}, \qquad \tau^* = \arg\max_{\tau}\frac{r_{xx}(\tau)}{r_{xx}(0)}
-  $$
-
-### 2. Detecting the target in the mixture
-
-1. **Harmonic tracking.** The mixture is transformed with the STFT. Human voiced speech has energy at integer multiples of `f0`, so for each candidate `f0` in the target's pitch range the harmonic energy is summed, and the `f0` trajectory over time is followed with **dynamic programming**. The trajectory yields a **harmonic mask** that is large on harmonic lines and small between them.
-2. **Identity verification.** The spectral shape of each frame is compared with the reference spectrum using the **Itakura distance**:
-
-   $$
-   d_I = \ln\frac{\mathbf{a}_S^{T}\mathbf{R}_x\mathbf{a}_S}{\mathbf{a}_x^{T}\mathbf{R}_x\mathbf{a}_x} \;\ge\; 0
-   $$
-
-   A frame is labeled as the target if the distance is below a threshold ε **and** its `f0` lies in the target's pitch range. Requiring both conditions avoids accepting another speaker with a similar spectrum.
-
-### 3. Spatial separation and cleanup
-
-Only for frames labeled as the target:
-
-1. **Direction finding (TDOA).** The arrival-time difference between two microphones is found with generalized cross-correlation (phase transform), then converted to an angle:
-
-   $$
-   \tau = \arg\max_{\tau}\int \frac{X_1 X_2^{*}}{|X_1 X_2^{*}|}\, e^{j2\pi f\tau}\,df, \qquad \theta = \arccos\frac{c\,\tau}{d}
-   $$
-
-2. **MVDR beamforming.** Using the estimated direction, microphone signals are combined so that sound from that direction passes undistorted while other directions are attenuated. Noise and interferer statistics are estimated from frames where the target is silent:
-
-   $$
-   \mathbf{w} = \frac{\Phi_{nn}^{-1}\mathbf{d}}{\mathbf{d}^{H}\Phi_{nn}^{-1}\mathbf{d}}, \qquad Y = \mathbf{w}^{H}\mathbf{x}
-   $$
-
----
 
 ## What the Demo Implements
 
